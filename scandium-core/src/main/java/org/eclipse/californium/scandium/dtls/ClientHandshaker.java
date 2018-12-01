@@ -138,6 +138,8 @@ public class ClientHandshaker extends Handshaker {
 
 	// Constructors ///////////////////////////////////////////////////
 
+	
+
 	/**
 	 * Creates a new handshaker for negotiating a DTLS session with a server.
 	 * 
@@ -157,8 +159,8 @@ public class ClientHandshaker extends Handshaker {
 	 *            if session, recordLayer or config is <code>null</code>
 	 */
 	public ClientHandshaker(DTLSSession session, RecordLayer recordLayer, SessionListener sessionListener,
-			DtlsConnectorConfig config, int maxTransmissionUnit) {
-		super(true, session, recordLayer, sessionListener, config, maxTransmissionUnit);
+			ConnectionIdProvider cidProvider, DtlsConnectorConfig config, int maxTransmissionUnit) {
+		super(true, 0, session, recordLayer, sessionListener, cidProvider, config, maxTransmissionUnit);
 		this.privateKey = config.getPrivateKey();
 		this.certificateChain = config.getCertificateChain();
 		this.publicKey = config.getPublicKey();
@@ -368,6 +370,22 @@ public class ClientHandshaker extends Handshaker {
 								AlertLevel.FATAL,
 								AlertDescription.ILLEGAL_PARAMETER,
 								message.getPeer()));
+			}
+		}
+		if (connectionIdLength != null) {
+			ConnectionIdExtension extension = serverHello.getConnectionIdExtension();
+			if (extension != null) {
+				ConnectionId connectionId = extension.getConnectionId();
+				if (connectionId.length() > 0) {
+					session.setWriteConnectionId(connectionId);
+				}
+			} else {
+				// connection id not supported by server
+				ConnectionId connectionId = session.getReadConnectionId();
+				if (connectionId != null) {
+					cidProvider.release(connectionId);
+					session.setReadConnectionId(null);
+				}
 			}
 		}
 		session.setSendCertificateType(serverHello.getClientCertificateType());
@@ -685,13 +703,10 @@ public class ClientHandshaker extends Handshaker {
 		clientRandom = startMessage.getRandom();
 
 		startMessage.addCompressionMethod(CompressionMethod.NULL);
-		if (maxFragmentLengthCode != null) {
-			MaxFragmentLengthExtension ext = new MaxFragmentLengthExtension(maxFragmentLengthCode); 
-			startMessage.addExtension(ext);
-			LOGGER.debug(
-					"Indicating max. fragment length [{}] to server [{}]",
-					maxFragmentLengthCode, getPeerAddress());
-		}
+
+		addConnectionId(startMessage);
+
+		addMaxFragmentLength(startMessage);
 
 		addServerNameIndication(startMessage);
 
@@ -706,7 +721,32 @@ public class ClientHandshaker extends Handshaker {
 		sendFlight(flight);
 	}
 
-	private void addServerNameIndication(final ClientHello helloMessage) {
+	protected void addMaxFragmentLength(final ClientHello helloMessage) {
+		if (maxFragmentLengthCode != null) {
+			MaxFragmentLengthExtension ext = new MaxFragmentLengthExtension(maxFragmentLengthCode); 
+			helloMessage.addExtension(ext);
+			LOGGER.debug(
+					"Indicating max. fragment length [{}] to server [{}]",
+					maxFragmentLengthCode, getPeerAddress());
+		}
+	}
+
+	protected void addConnectionId(final ClientHello helloMessage) {
+		if (connectionIdLength != null) {
+			ConnectionIdExtension extension;
+			if (connectionIdLength > 0) {
+				ConnectionId cid = cidProvider.create(connectionIdLength);
+				session.setReadConnectionId(cid);
+				extension = ConnectionIdExtension.fromConnectionId(cid);
+			}
+			else {
+				extension = ConnectionIdExtension.fromLength(connectionIdLength);
+			}			
+			helloMessage.addExtension(extension);
+		}
+	}
+
+	protected void addServerNameIndication(final ClientHello helloMessage) {
 
 		if (sniEnabled && session.getVirtualHost() != null) {
 			LOGGER.debug("adding SNI extension to CLIENT_HELLO message [{}]", session.getVirtualHost());

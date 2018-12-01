@@ -229,6 +229,10 @@ public final class DtlsConnectorConfig {
 	 */
 	private Integer verifyPeersOnResumptionThreshold;
 
+	private Integer connectionIdLength;
+
+	private Boolean useConnectionIdInHandshake;
+	
 	private DtlsConnectorConfig() {
 		// empty
 	}
@@ -361,6 +365,28 @@ public final class DtlsConnectorConfig {
 	 */
 	public Integer getVerifyPeersOnResumptionThreshold() {
 		return verifyPeersOnResumptionThreshold;
+	}
+
+	/**
+	 * Gets connection ID length.
+	 * 
+	 * @return length of connection id. 0 for support connection id, but not
+	 *         using it. {@code null} for no supported.
+	 */
+	public Integer getConnectionIdLength() {
+		return connectionIdLength;
+	}
+
+	/**
+	 * Gets whether the connection id is already used during the handshake, or
+	 * only used after the encryption is established as specified in 
+	 * <a https://tools.ietf.org/html/draft-ietf-tls-dtls-connection-id-02#section-3>
+	 * draft-ietf-tls-dtls-connection-id, version 02, section 3 (last sentence)</a>
+	 * 
+	 * @return {@code true}, use the connection id already in the handshake.
+	 */
+	public Boolean isConnectionIdUsedInHandshake() {
+		return useConnectionIdInHandshake;
 	}
 
 	/**
@@ -626,6 +652,8 @@ public final class DtlsConnectorConfig {
 		cloned.autoResumptionTimeoutMillis = autoResumptionTimeoutMillis;
 		cloned.sniEnabled = sniEnabled;
 		cloned.verifyPeersOnResumptionThreshold = verifyPeersOnResumptionThreshold;
+		cloned.connectionIdLength = connectionIdLength;
+		cloned.useConnectionIdInHandshake = useConnectionIdInHandshake;
 		return cloned;
 	}
 
@@ -1361,6 +1389,35 @@ public final class DtlsConnectorConfig {
 		}
 
 		/**
+		 * Sets the connection ID length.
+		 * 
+		 * @param connectionIdLength
+		 * @return this builder for command chaining.
+		 */
+		public Builder setConnectionIdLength(final int connectionIdLength) {
+			if (connectionIdLength < 0) {
+				throw new IllegalArgumentException("cid length must be at least 0");
+			}
+			config.connectionIdLength = connectionIdLength;
+			return this;
+		}
+
+		/**
+		 * Gets whether the connection id is already used during the handshake,
+		 * or only used after the encryption is established as specified in 
+		 * <a https://tools.ietf.org/html/draft-ietf-tls-dtls-connection-id-02#section-3>
+		 * draft-ietf-tls-dtls-connection-id, version 02, section 3 (last sentence)
+		 * </a>
+		 * 
+		 * @param enable {@code true} to use the connection id already in the handshake.
+		 * @return this builder for command chaining.
+		 */
+		public Builder setConnectionIdUsedInHandshake(boolean enable) {
+			config.useConnectionIdInHandshake = enable;
+			return this;
+		}
+
+		/**
 		 * Set the number of thread which should be used to handle DTLS
 		 * connection.
 		 * <p>
@@ -1501,6 +1558,9 @@ public final class DtlsConnectorConfig {
 			}
 			if (config.maxRetransmissions == null) {
 				config.maxRetransmissions = DEFAULT_MAX_RETRANSMISSIONS;
+			}
+			if (config.useConnectionIdInHandshake == null) {
+				config.useConnectionIdInHandshake = false;
 			}
 			if (config.clientAuthenticationRequired == null) {
 				config.clientAuthenticationRequired = true;

@@ -62,8 +62,8 @@ public class ResumingServerHandshaker extends ServerHandshaker {
 	// Constructor ////////////////////////////////////////////////////
 
 	public ResumingServerHandshaker(int sequenceNumber, DTLSSession session, RecordLayer recordLayer, SessionListener sessionListener,
-			DtlsConnectorConfig config, int maxTransmissionUnit) {
-		super(sequenceNumber, session, recordLayer, sessionListener, config, maxTransmissionUnit);
+			ConnectionIdProvider cidProvider, DtlsConnectorConfig config, int maxTransmissionUnit) {
+		super(sequenceNumber, session, recordLayer, sessionListener, cidProvider, config, maxTransmissionUnit);
 	}
 
 	// Methods ////////////////////////////////////////////////////////
@@ -112,7 +112,7 @@ public class ResumingServerHandshaker extends ServerHandshaker {
 
 			incrementNextReceiveSeq();
 			LOGGER.debug("Processed {} message with sequence no [{}] from peer [{}]",
-					new Object[]{handshakeMsg.getMessageType(), handshakeMsg.getMessageSeq(), handshakeMsg.getPeer()});
+					handshakeMsg.getMessageType(), handshakeMsg.getMessageSeq(), handshakeMsg.getPeer());
 			break;
 
 		default:
@@ -156,8 +156,11 @@ public class ResumingServerHandshaker extends ServerHandshaker {
 			clientRandom = clientHello.getRandom();
 			serverRandom = new Random(new SecureRandom());
 
+			HelloExtensions serverHelloExtensions = new HelloExtensions();
+			processHelloExtensions(clientHello, serverHelloExtensions);
+
 			ServerHello serverHello = new ServerHello(clientHello.getClientVersion(), serverRandom, session.getSessionIdentifier(),
-					session.getCipherSuite(), session.getCompressionMethod(), null, clientHello.getPeer());
+					session.getCipherSuite(), session.getCompressionMethod(), serverHelloExtensions, clientHello.getPeer());
 			flight.addMessage(wrapMessage(serverHello));
 			md.update(serverHello.toByteArray());
 

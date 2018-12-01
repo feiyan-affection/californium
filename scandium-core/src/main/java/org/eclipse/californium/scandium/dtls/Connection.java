@@ -59,11 +59,11 @@ public final class Connection {
 	private static final Logger LOGGER = LoggerFactory.getLogger(Connection.class.getName());
 	
 	private final SerialExecutor serialExecutor;
-	private final InetSocketAddress peerAddress;
 	private final SessionTicket ticket;
 	private final SessionId sessionId;
 	private final SessionListener sessionListener;
 	private final AtomicReference<Handshaker> ongoingHandshake = new AtomicReference<Handshaker>();
+	private InetSocketAddress peerAddress;
 	/**
 	 * Expired realtime nanoseconds of the last message send or received.
 	 */
@@ -310,6 +310,26 @@ public final class Connection {
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * Gets the session containing the connection's <em>current</em> state.
+	 * 
+	 * This is the {@link #establishedSession} if not {@code null} or the
+	 * session negotiated in the {@link #ongoingHandshake}.
+	 * 
+	 * @return the <em>current</em> session or {@code null} if neither an
+	 *         established session nor an ongoing handshake exists
+	 */
+	public DTLSSession getSession() {
+		DTLSSession session = establishedSession;
+		if (session == null) {
+			Handshaker handshaker = ongoingHandshake.get();
+			if (handshaker != null) {
+				session = handshaker.getSession();
+			}
+		}
+		return session;
 	}
 
 	/**

@@ -155,29 +155,6 @@ public class ServerHandshaker extends Handshaker {
 	 * Creates a handshaker for negotiating a DTLS session with a client
 	 * following the full DTLS handshake protocol. 
 	 * 
-	 * @param session
-	 *            the session to negotiate with the client.
-	 * @param recordLayer
-	 *            the object to use for sending flights to the peer.
-	 * @param sessionListener
-	 *            the listener to notify about the session's life-cycle events.
-	 * @param config
-	 *            the DTLS configuration.
-	 * @param maxTransmissionUnit
-	 *            the MTU value reported by the network interface the record layer is bound to.
-	 * @throws HandshakeException if the handshaker cannot be initialized
-	 * @throws NullPointerException
-	 *            if session or recordLayer is <code>null</code>.
-	 */
-	public ServerHandshaker(DTLSSession session, RecordLayer recordLayer, SessionListener sessionListener,
-			DtlsConnectorConfig config, int maxTransmissionUnit) throws HandshakeException {
-		this(0, session, recordLayer, sessionListener, config, maxTransmissionUnit);
-	}
-	
-	/**
-	 * Creates a handshaker for negotiating a DTLS session with a client
-	 * following the full DTLS handshake protocol. 
-	 * 
 	 * @param initialMessageSequenceNo
 	 *            the initial message sequence number to expect from the peer
 	 *            (this parameter can be used to initialize the <em>receive_next_seq</em>
@@ -202,8 +179,8 @@ public class ServerHandshaker extends Handshaker {
 	 *            if session, recordLayer or config is <code>null</code>.
 	 */
 	public ServerHandshaker(int initialMessageSequenceNo, DTLSSession session, RecordLayer recordLayer, SessionListener sessionListener,
-			DtlsConnectorConfig config, int maxTransmissionUnit) { 
-		super(false, initialMessageSequenceNo, session, recordLayer, sessionListener, config, maxTransmissionUnit);
+			ConnectionIdProvider cidProvider, DtlsConnectorConfig config, int maxTransmissionUnit) { 
+		super(false, initialMessageSequenceNo, session, recordLayer, sessionListener, cidProvider, config, maxTransmissionUnit);
 
 		this.supportedCipherSuites = config.getSupportedCipherSuites();
 
@@ -535,35 +512,8 @@ public class ServerHandshaker extends Handshaker {
 
 		HelloExtensions serverHelloExtensions = new HelloExtensions();
 		negotiateCipherSuite(clientHello, serverHelloExtensions);
-
-		MaxFragmentLengthExtension maxFragmentLengthExt = clientHello.getMaxFragmentLengthExtension();
-		if (maxFragmentLengthExt != null) {
-			session.setMaxFragmentLength(maxFragmentLengthExt.getFragmentLength().length());
-			serverHelloExtensions.addExtension(maxFragmentLengthExt);
-			LOGGER.debug(
-					"Negotiated max. fragment length [{} bytes] with peer [{}]",
-					maxFragmentLengthExt.getFragmentLength().length(), clientHello.getPeer());
-		}
-
-		ServerNameExtension serverNameExt = clientHello.getServerNameExtension();
-		if (serverNameExt != null) {
-			if (sniEnabled) {
-				// store the names indicated by peer for later reference during key exchange
-				session.setServerNames(serverNameExt.getServerNames());
-				// RFC6066, section 3 requires the server to respond with
-				// an empty SNI extension if it might make use of the value(s)
-				// provided by the client
-				serverHelloExtensions.addExtension(ServerNameExtension.emptyServerNameIndication());
-				session.setSniSupported(true);
-				LOGGER.debug(
-						"using server name indication received from peer [{}]",
-						clientHello.getPeer());
-			} else {
-				LOGGER.debug("client [{}] included SNI in HELLO but SNI support is disabled",
-						clientHello.getPeer());
-			}
-		}
-
+		processHelloExtensions(clientHello, serverHelloExtensions);
+		
 		ServerHello serverHello = new ServerHello(serverVersion, serverRandom, sessionId,
 				session.getCipherSuite(), session.getCompressionMethod(), serverHelloExtensions, session.getPeer());
 		flight.addMessage(wrapMessage(serverHello));
@@ -728,6 +678,55 @@ public class ServerHandshaker extends Handshaker {
 		// by current assumption we take an empty premaster secret
 		// to compute the master secret and the resulting keys
 		return new byte[] {};
+	}
+
+	protected void processHelloExtensions(final ClientHello clientHello, final HelloExtensions serverHelloExtensions) {
+		MaxFragmentLengthExtension maxFragmentLengthExt = clientHello.getMaxFragmentLengthExtension();
+		if (maxFragmentLengthExt != null) {
+			session.setMaxFragmentLength(maxFragmentLengthExt.getFragmentLength().length());
+			serverHelloExtensions.addExtension(maxFragmentLengthExt);
+			LOGGER.debug(
+					"Negotiated max. fragment length [{} bytes] with peer [{}]",
+					maxFragmentLengthExt.getFragmentLength().length(), clientHello.getPeer());
+		}
+
+		ServerNameExtension serverNameExt = clientHello.getServerNameExtension();
+		if (serverNameExt != null) {
+			if (sniEnabled) {
+				// store the names indicated by peer for later reference during key exchange
+				session.setServerNames(serverNameExt.getServerNames());
+				// RFC6066, section 3 requires the server to respond with
+				// an empty SNI extension if it might make use of the value(s)
+				// provided by the client
+				serverHelloExtensions.addExtension(ServerNameExtension.emptyServerNameIndication());
+				session.setSniSupported(true);
+				LOGGER.debug(
+						"using server name indication received from peer [{}]",
+						clientHello.getPeer());
+			} else {
+				LOGGER.debug("client [{}] included SNI in HELLO but SNI support is disabled",
+						clientHello.getPeer());
+			}
+		}
+
+		if (connectionIdLength != null) {
+			ConnectionIdExtension connectionIdExtension = clientHello.getConnectionIdExtension();
+			if (connectionIdExtension != null) {
+				ConnectionId connectionId = connectionIdExtension.getConnectionId();
+				if (connectionId.length() > 0) {
+					session.setWriteConnectionId(connectionId);
+				}
+				ConnectionIdExtension extension;
+				if (connectionIdLength > 0) {
+					ConnectionId cid = cidProvider.create(connectionIdLength);
+					session.setReadConnectionId(cid);
+					extension = ConnectionIdExtension.fromConnectionId(cid);
+				} else {
+					extension = ConnectionIdExtension.fromLength(connectionIdLength);
+				}
+				serverHelloExtensions.addExtension(extension);
+			}
+		}
 	}
 
 	@Override

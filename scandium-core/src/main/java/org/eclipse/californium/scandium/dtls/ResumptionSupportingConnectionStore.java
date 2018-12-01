@@ -49,12 +49,23 @@ public interface ResumptionSupportingConnectionStore {
 	boolean update(Connection connection);
 
 	/**
+	 * Put connection associated with the connection id into the store.
+	 * 
+	 * @param cid connection id
+	 * @param connection connection
+	 * @return <code>true</code> if the connection could be stored by the
+	 *         provided connection id, <code>false</code> otherwise (e.g.
+	 *         because the connection id is already in use)
+	 */
+	boolean put(final ConnectionId cid, final Connection connection);
+
+	/**
 	 * Put connection associated with the session id into the store.
 	 * 
 	 * @param session established session.
 	 * @param connection connection of established session
 	 */
-	void putEstablishedSession(final DTLSSession session, final Connection connection);
+	void putEstablishedSession(DTLSSession session, Connection connection);
 
 	/**
 	 * Gets the number of additional connection this store can manage.
@@ -73,6 +84,15 @@ public interface ResumptionSupportingConnectionStore {
 	Connection get(InetSocketAddress peerAddress);
 
 	/**
+	 * Gets a connection by its connection id.
+	 * 
+	 * @param cid connection id
+	 * @return the matching connection or <code>null</code> if
+	 *     no connection exists for the given connection id
+	 */
+	Connection get(ConnectionId cid);
+
+	/**
 	 * Finds a connection by its session ID.
 	 * 
 	 * @param id the session ID
@@ -80,6 +100,8 @@ public interface ResumptionSupportingConnectionStore {
 	 *     no connection with an established session with the given ID exists
 	 */
 	Connection find(SessionId id);
+
+	void remove(ConnectionId cid, Connection connection);
 
 	/**
 	 * Removes a connection from the store and session cache.

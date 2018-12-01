@@ -496,7 +496,7 @@ public class DTLSConnectorTest {
 			
 			@Override
 			public void handleData(byte[] data) {
-				receivedRecords.addAll(Record.fromByteArray(data, serverEndpoint));
+				receivedRecords.addAll(Record.fromByteArray(data, serverEndpoint, null));
 				latch.countDown();
 			}
 		};
@@ -582,7 +582,7 @@ public class DTLSConnectorTest {
 		LatchDecrementingDataHandler handler = new LatchDecrementingDataHandler(latch) {
 			@Override
 			public boolean handle(byte[] data) {
-				receivedRecords.addAll(Record.fromByteArray(data, serverEndpoint));
+				receivedRecords.addAll(Record.fromByteArray(data, serverEndpoint, null));
 				return true;
 			}
 		};
@@ -810,7 +810,7 @@ public class DTLSConnectorTest {
 
 			@Override
 			public void handleData(byte[] data) {
-				receivedRecords.addAll(Record.fromByteArray(data, serverEndpoint)); 
+				receivedRecords.addAll(Record.fromByteArray(data, serverEndpoint, null)); 
 				latch.countDown();
 			}
 		};
@@ -1090,7 +1090,7 @@ public class DTLSConnectorTest {
 		// send a CLIENT_HELLO message to the server to renegotiation connection
 		client.sendRecord(new Record(ContentType.HANDSHAKE, establishedClientSession.getWriteEpoch(),
 				establishedClientSession.getSequenceNumber(), createClientHello(),
-				establishedClientSession));
+				establishedClientSession, false));
 
 		// ensure server answer with a NO_RENOGIATION alert
 		AlertMessage alert = alertCatcher.waitForFirstAlert(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
@@ -1110,7 +1110,7 @@ public class DTLSConnectorTest {
 		// send a HELLO_REQUEST message to the client
 		server.sendRecord(new Record(ContentType.HANDSHAKE, establishedServerSession.getWriteEpoch(),
 				establishedServerSession.getSequenceNumber(), new HelloRequest(clientEndpoint),
-				establishedServerSession));
+				establishedServerSession, false));
 
 		// ensure client answer with a NO_RENOGIATION alert
 		AlertMessage alert = alertCatcher.waitForFirstAlert(MAX_TIME_TO_WAIT_SECS, TimeUnit.SECONDS);
@@ -1232,7 +1232,7 @@ public class DTLSConnectorTest {
 		@Override
 		public void handleData(byte[] data) {
 			try {
-				records.put(Record.fromByteArray(data, serverEndpoint));
+				records.put(Record.fromByteArray(data, serverEndpoint, null));
 			} catch (InterruptedException e) {
 			}
 		}
@@ -1249,7 +1249,7 @@ public class DTLSConnectorTest {
 		LatchDecrementingDataHandler handler = new LatchDecrementingDataHandler(latch) {
 			@Override
 			public boolean handle(byte[] data) {
-				receivedRecords.addAll(Record.fromByteArray(data, serverEndpoint));
+				receivedRecords.addAll(Record.fromByteArray(data, serverEndpoint, null));
 				return true;
 			}
 		};

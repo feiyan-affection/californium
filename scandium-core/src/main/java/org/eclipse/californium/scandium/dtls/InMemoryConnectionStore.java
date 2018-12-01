@@ -45,34 +45,33 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * An in-memory <code>ConnectionStore</code> with a configurable maximum capacity
- * and support for evicting stale connections based on a <em>least recently used</em> policy.
+ * An in-memory <code>ConnectionStore</code> with a configurable maximum
+ * capacity and support for evicting stale connections based on a <em>least
+ * recently used</em> policy.
  * <p>
  * The store keeps track of the connections' last-access time automatically.
- * Every time a connection is read from or put to the store the access-time
- * is updated.
+ * Every time a connection is read from or put to the store the access-time is
+ * updated.
  * </p>
  * <p>
- * A connection can be successfully added to the store if any of the
- * following conditions is met:
+ * A connection can be successfully added to the store if any of the following
+ * conditions is met:
  * </p>
  * <ul>
  * <li>The store's remaining capacity is greater than zero.</li>
  * <li>The store contains at least one <em>stale</em> connection, i.e. a
  * connection that has not been accessed for at least the store's <em>
  * connection expiration threshold</em> period. In such a case the least
- * recently accessed stale connection gets evicted from the store to make
- * place for the new connection to be added.</li>
+ * recently accessed stale connection gets evicted from the store to make place
+ * for the new connection to be added.</li>
  * </ul>
  * <p>
- * This implementation uses a <code>java.util.HashMap</code> with
- * a connection's peer address as key as its backing store.
- * In addition to that the store keeps a doubly-linked list of the
- * connections in access-time order.
+ * This implementation uses a <code>java.util.HashMap</code> with a connection's
+ * peer address as key as its backing store. In addition to that the store keeps
+ * a doubly-linked list of the connections in access-time order.
  * </p>
  * <p>
- * Insertion, lookup and removal of connections is done in
- * <em>O(log n)</em>.
+ * Insertion, lookup and removal of connections is done in <em>O(log n)</em>.
  * </p>
  * <p>
  * Storing and reading to/from the store is thread safe.
@@ -85,13 +84,14 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 	private static final long DEFAULT_EXPIRATION_THRESHOLD = 36 * 60 * 60; // 36h
 	private final LeastRecentlyUsedCache<InetSocketAddress, Connection> connections;
 	private final Map<SessionId, Connection> connectionsByEstablishedSession;
+	private final Map<ConnectionId, Connection> connectionsByCid;
 	private final SessionCache sessionCache;
 
 	private String tag = "";
 
 	/**
-	 * Creates a store with a capacity of 500000 connections and
-	 * a connection expiration threshold of 36 hours.
+	 * Creates a store with a capacity of 500000 connections and a connection
+	 * expiration threshold of 36 hours.
 	 */
 	public InMemoryConnectionStore() {
 		this(DEFAULT_CACHE_SIZE, DEFAULT_EXPIRATION_THRESHOLD);
@@ -112,9 +112,9 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 	 * Creates a store based on given configuration parameters.
 	 * 
 	 * @param capacity the maximum number of connections the store can manage
-	 * @param threshold the period of time of inactivity (in seconds) after which a
-	 *            connection is considered stale and can be evicted from the store if
-	 *            a new connection is to be added to the store
+	 * @param threshold the period of time of inactivity (in seconds) after
+	 *            which a connection is considered stale and can be evicted from
+	 *            the store if a new connection is to be added to the store
 	 */
 	public InMemoryConnectionStore(final int capacity, final long threshold) {
 		this(capacity, threshold, null);
@@ -124,23 +124,25 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 	 * Creates a store based on given configuration parameters.
 	 * 
 	 * @param capacity the maximum number of connections the store can manage
-	 * @param threshold the period of time of inactivity (in seconds) after which a
-	 *            connection is considered stale and can be evicted from the store if
-	 *            a new connection is to be added to the store
+	 * @param threshold the period of time of inactivity (in seconds) after
+	 *            which a connection is considered stale and can be evicted from
+	 *            the store if a new connection is to be added to the store
 	 * @param sessionCache a second level cache to use for <em>current</em>
-	 *                     connection state of established DTLS sessions.
-	 *                     If implements {@link ClientSessionCache}, restore
-	 *                     connection from the cache and mark them to resume. 
+	 *            connection state of established DTLS sessions. If implements
+	 *            {@link ClientSessionCache}, restore connection from the cache
+	 *            and mark them to resume.
 	 */
 	public InMemoryConnectionStore(final int capacity, final long threshold, final SessionCache sessionCache) {
 		connections = new LeastRecentlyUsedCache<>(capacity, threshold);
 		connections.setEvictingOnReadAccess(false);
 		connections.setUpdatingOnReadAccess(false);
 		connectionsByEstablishedSession = new HashMap<>();
+		connectionsByCid = new HashMap<>();
 		this.sessionCache = sessionCache;
 
 		if (sessionCache != null) {
-			// make sure that session state for stale (evicted) connections is removed from second level cache
+			// make sure that session state for stale (evicted) connections is
+			// removed from second level cache
 			connections.addEvictionListener(new LeastRecentlyUsedCache.EvictionListener<Connection>() {
 
 				@Override
@@ -149,7 +151,7 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 					removeSessionFromCache(staleConnection);
 				}
 			});
-			
+
 			if (sessionCache instanceof ClientSessionCache) {
 				ClientSessionCache clientCache = (ClientSessionCache) sessionCache;
 				LOG.debug("resume client sessions {}", clientCache);
@@ -157,7 +159,7 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 					SessionTicket ticket = clientCache.getSessionTicket(peer);
 					SessionId id = clientCache.getSessionIdentity(peer);
 					if (ticket != null && id != null) {
-						// restore connection from session ticket 
+						// restore connection from session ticket
 						Connection connection = new Connection(ticket, id);
 						connection.setResumptionRequired(true);
 						connections.put(peer, connection);
@@ -166,8 +168,8 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 				}
 			}
 		}
-		LOG.info("Created new InMemoryConnectionStore [capacity: {}, connection expiration threshold: {}s]",
-				capacity, threshold);
+		LOG.info("Created new InMemoryConnectionStore [capacity: {}, connection expiration threshold: {}s]", capacity,
+				threshold);
 	}
 
 	/**
@@ -199,9 +201,9 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 	 * place for the new connection to be added.</li>
 	 * </ul>
 	 * 
-	 * @return <code>true</code> if the connection could be added to the
-	 *         store, <code>false</code> otherwise, e.g. because the store's
-	 *         remaining capacity is zero and no stale connection can be evicted
+	 * @return <code>true</code> if the connection could be added to the store,
+	 *         <code>false</code> otherwise, e.g. because the store's remaining
+	 *         capacity is zero and no stale connection can be evicted
 	 * @throws IllegalStateException, if the connection is not executing!
 	 */
 	@Override
@@ -233,6 +235,25 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 		}
 	}
 
+	@Override
+	public synchronized boolean put(final ConnectionId cid, final Connection connection) {
+		if (!connectionsByCid.containsKey(cid)) {
+			connectionsByCid.put(cid, connection);
+			return true;
+		} else {
+			return false;
+		}
+	}
+
+	@Override
+	public synchronized void remove(final ConnectionId cid, final Connection connection) {
+		Connection removed = connectionsByCid.remove(cid);
+		if (removed != null && removed != connection) {
+			connectionsByCid.put(cid, removed);
+		}
+	}	
+
+	@Override
 	public synchronized void putEstablishedSession(final DTLSSession session, final Connection connection) {
 		connectionsByEstablishedSession.put(session.getSessionIdentifier(), connection);
 		if (sessionCache != null) {
@@ -257,20 +278,24 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 				// make sure a stale session cannot be resumed
 				SessionTicket ticket = sessionCache.get(id);
 				if (ticket == null) {
-					// either a session with the given ID has never been established (on other nodes)
-					// or another node has removed the session from the cache, e.g. because it became
+					// either a session with the given ID has never been
+					// established (on other nodes)
+					// or another node has removed the session from the cache,
+					// e.g. because it became
 					// stale
 
 					if (conFromLocalCache != null) {
 						// remove corresponding connection from this store
 						remove(conFromLocalCache, false);
-						// TODO: should we send a fatal alert to peer in this case?
+						// TODO: should we send a fatal alert to peer in this
+						// case?
 					}
 
 					return null;
 
 				} else if (conFromLocalCache == null) {
-					// this probably means that we are taking over the session from a failed node
+					// this probably means that we are taking over the session
+					// from a failed node
 					return new Connection(ticket, id);
 					// connection will be put to first level cache as part of
 					// the abbreviated handshake
@@ -306,6 +331,11 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 	@Override
 	public synchronized Connection get(final InetSocketAddress peerAddress) {
 		return connections.get(peerAddress);
+	}
+
+	@Override
+	public synchronized Connection get(final ConnectionId cid) {
+		return connectionsByCid.get(cid);
 	}
 
 	@Override
@@ -347,6 +377,7 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 				LOG.debug("{}connection: remove {}", tag, connection.getPeerAddress());
 			}
 			removeFromEstablishedSessions(connection);
+			removeFromCidConnections(connection);
 			if (removeFromSessionCache) {
 				removeSessionFromCache(connection);
 			}
@@ -359,9 +390,17 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 		if (establishedSession != null) {
 			SessionId sessionId = establishedSession.getSessionIdentifier();
 			Connection removedConnection = connectionsByEstablishedSession.remove(sessionId);
-			if (removedConnection != connection) {
+			if (removedConnection != null && removedConnection != connection) {
 				connectionsByEstablishedSession.put(sessionId, removedConnection);
 			}
+		}
+	}
+
+	private void removeFromCidConnections(Connection connection) {
+		DTLSSession session = connection.getSession();
+		if (session != null) {
+			ConnectionId connectionId = session.getReadConnectionId();
+			remove(connectionId, connection);
 		}
 	}
 
@@ -381,6 +420,7 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 		}
 		connections.clear();
 		connectionsByEstablishedSession.clear();
+		connectionsByCid.clear();
 		// TODO: does it make sense to clear the SessionCache as well?
 	}
 

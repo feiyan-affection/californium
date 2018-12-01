@@ -29,7 +29,6 @@ public class Token {
 	 * Empty token.
 	 */
 	public static final Token EMPTY = new Token(new byte[0]);
-
 	/**
 	 * token data.
 	 */
@@ -76,7 +75,7 @@ public class Token {
 
 	@Override
 	public String toString() {
-		return new StringBuilder("Token=").append(Utils.toHexString(token)).toString();
+		return new StringBuilder("Token=").append(getAsString()).toString();
 	}
 
 	@Override
