@@ -1394,8 +1394,8 @@ public final class DtlsConnectorConfig {
 		 * @param connectionIdLength
 		 * @return this builder for command chaining.
 		 */
-		public Builder setConnectionIdLength(final int connectionIdLength) {
-			if (connectionIdLength < 0) {
+		public Builder setConnectionIdLength(final Integer connectionIdLength) {
+			if (connectionIdLength != null && connectionIdLength < 0) {
 				throw new IllegalArgumentException("cid length must be at least 0");
 			}
 			config.connectionIdLength = connectionIdLength;
