@@ -96,7 +96,7 @@ public final class DTLSSession {
 	/**
 	 * This session's peer's IP address and port.
 	 */
-	private final InetSocketAddress peer;
+	private InetSocketAddress peer;
 
 	/**
 	 * An arbitrary byte sequence chosen by the server to identify this session.
@@ -134,7 +134,6 @@ public final class DTLSSession {
 	 */
 	private byte[] masterSecret = null;
 
-	private ConnectionId readConnectionId = null;
 	private ConnectionId writeConnectionId = null;
 
 	/**
@@ -294,14 +293,6 @@ public final class DTLSSession {
 			this.masterSecret = null;
 			this.sessionIdentifier = sessionIdentifier;
 		}
-	}
-
-	public ConnectionId getReadConnectionId() {
-		return readConnectionId;
-	}
-
-	void setReadConnectionId(ConnectionId connectionId) {
-		this.readConnectionId = connectionId;
 	}
 
 	public ConnectionId getWriteConnectionId() {
@@ -828,6 +819,10 @@ public final class DTLSSession {
 	 */
 	public InetSocketAddress getPeer() {
 		return peer;
+	}
+
+	public void setPeer(InetSocketAddress peer) {
+		this.peer = peer;
 	}
 
 	/**

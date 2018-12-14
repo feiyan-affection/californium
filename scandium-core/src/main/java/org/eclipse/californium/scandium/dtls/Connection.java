@@ -64,6 +64,8 @@ public final class Connection {
 	private final SessionListener sessionListener;
 	private final AtomicReference<Handshaker> ongoingHandshake = new AtomicReference<Handshaker>();
 	private InetSocketAddress peerAddress;
+	private ConnectionId cid;
+
 	/**
 	 * Expired realtime nanoseconds of the last message send or received.
 	 */
@@ -135,6 +137,7 @@ public final class Connection {
 			this.ticket = connection.getSessionTicket();
 			this.sessionId =connection.getSessionIdentity();
 			this.peerAddress = connection.getPeerAddress();
+			this.cid = connection.getConnectionId();
 			this.sessionListener =  new ConnectionSessionListener();
 			this.lastMessageNanos.set(connection.lastMessageNanos.get());
 			this.resumptionRequired = connection.resumptionRequired;
@@ -215,12 +218,51 @@ public final class Connection {
 	}
 
 	/**
+	 * Gets the connection id.
+	 * 
+	 * @return the cid
+	 */
+	public ConnectionId getConnectionId() {
+		return cid;
+	}
+
+	/**
+	 * Gets the connection id.
+	 * 
+	 * @return the cid
+	 */
+	public void  setConnectionId(ConnectionId cid) {
+		this.cid = cid;
+	}
+
+	/**
 	 * Gets the address of this connection's peer.
 	 * 
 	 * @return the address
 	 */
 	public InetSocketAddress getPeerAddress() {
 		return peerAddress;
+	}
+
+	/**
+	 * Gets the address of this connection's peer.
+	 * 
+	 * @return the address
+	 */
+	public void setPeerAddress(InetSocketAddress peerAddress) {
+		this.peerAddress = peerAddress;
+		if (establishedSession != null) {
+			establishedSession.setPeer(peerAddress);
+		}
+	}
+
+	public boolean equalsPeerAddress(InetSocketAddress peerAddress) {
+		if (this.peerAddress == peerAddress) {
+			return true;
+		} else if (this.peerAddress == null) {
+			return false;
+		}
+		return this.peerAddress.equals(peerAddress);
 	}
 
 	/**

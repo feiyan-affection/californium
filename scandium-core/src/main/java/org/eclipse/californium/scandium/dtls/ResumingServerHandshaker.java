@@ -61,9 +61,8 @@ public class ResumingServerHandshaker extends ServerHandshaker {
 
 	// Constructor ////////////////////////////////////////////////////
 
-	public ResumingServerHandshaker(int sequenceNumber, DTLSSession session, RecordLayer recordLayer, SessionListener sessionListener,
-			ConnectionIdProvider cidProvider, DtlsConnectorConfig config, int maxTransmissionUnit) {
-		super(sequenceNumber, session, recordLayer, sessionListener, cidProvider, config, maxTransmissionUnit);
+	public ResumingServerHandshaker(int sequenceNumber, DTLSSession session, RecordLayer recordLayer, Connection connection, DtlsConnectorConfig config, int maxTransmissionUnit) {
+		super(sequenceNumber, session, recordLayer, connection, config, maxTransmissionUnit);
 	}
 
 	// Methods ////////////////////////////////////////////////////////

@@ -158,9 +158,9 @@ public class ClientHandshaker extends Handshaker {
 	 * @throws NullPointerException
 	 *            if session, recordLayer or config is <code>null</code>
 	 */
-	public ClientHandshaker(DTLSSession session, RecordLayer recordLayer, SessionListener sessionListener,
-			ConnectionIdProvider cidProvider, DtlsConnectorConfig config, int maxTransmissionUnit) {
-		super(true, 0, session, recordLayer, sessionListener, cidProvider, config, maxTransmissionUnit);
+	public ClientHandshaker(DTLSSession session, RecordLayer recordLayer, Connection connection,
+			DtlsConnectorConfig config, int maxTransmissionUnit) {
+		super(true, 0, session, recordLayer, connection, config, maxTransmissionUnit);
 		this.privateKey = config.getPrivateKey();
 		this.certificateChain = config.getCertificateChain();
 		this.publicKey = config.getPublicKey();
@@ -378,13 +378,6 @@ public class ClientHandshaker extends Handshaker {
 				ConnectionId connectionId = extension.getConnectionId();
 				if (connectionId.length() > 0) {
 					session.setWriteConnectionId(connectionId);
-				}
-			} else {
-				// connection id not supported by server
-				ConnectionId connectionId = session.getReadConnectionId();
-				if (connectionId != null) {
-					cidProvider.release(connectionId);
-					session.setReadConnectionId(null);
 				}
 			}
 		}
@@ -735,8 +728,7 @@ public class ClientHandshaker extends Handshaker {
 		if (connectionIdLength != null) {
 			ConnectionIdExtension extension;
 			if (connectionIdLength > 0) {
-				ConnectionId cid = cidProvider.create(connectionIdLength);
-				session.setReadConnectionId(cid);
+				ConnectionId cid = connection.getConnectionId();
 				extension = ConnectionIdExtension.fromConnectionId(cid);
 			}
 			else {

@@ -167,7 +167,7 @@ public abstract class Handshaker {
 
 	private final RecordLayer recordLayer;
 
-	protected final ConnectionIdProvider cidProvider;
+	protected final Connection connection;
 	
 	/** Buffer for received records that can not be processed immediately. */
 	protected InboundMessageBuffer inboundMessageBuffer;
@@ -235,7 +235,7 @@ public abstract class Handshaker {
 	 *             is negative
 	 */
 	protected Handshaker(boolean isClient, int initialMessageSeq, DTLSSession session, RecordLayer recordLayer,
-			SessionListener sessionListener, ConnectionIdProvider cidProvider, DtlsConnectorConfig config, int maxTransmissionUnit) {
+			Connection connection, DtlsConnectorConfig config, int maxTransmissionUnit) {
 		if (session == null) {
 			throw new NullPointerException("DTLS Session must not be null");
 		} else if (recordLayer == null) {
@@ -250,15 +250,14 @@ public abstract class Handshaker {
 		this.nextReceiveSeq = initialMessageSeq;
 		this.session = session;
 		this.recordLayer = recordLayer;
-		this.cidProvider = cidProvider;
+		this.connection = connection;
 		this.connectionIdLength = config.getConnectionIdLength();
-		if (connectionIdLength != null && connectionIdLength > 0 && cidProvider == null) {
-			throw new IllegalArgumentException("cid provider must not be null for cid length " + connectionIdLength);
-		}
 		this.maxDeferredProcessedApplicationDataMessages = config.getMaxDeferredProcessedApplicationDataMessages();
 		this.deferredApplicationData = new ArrayList<RawData>(maxDeferredProcessedApplicationDataMessages);
 		this.deferredRecords = new ArrayList<Record>(maxDeferredProcessedApplicationDataMessages);
-		addSessionListener(sessionListener);
+		if (connection != null) {
+			addSessionListener(connection.getSessionListener());
+		}
 		this.certificateVerifier = config.getCertificateVerifier();
 		this.session.setMaxTransmissionUnit(maxTransmissionUnit);
 		this.inboundMessageBuffer = new InboundMessageBuffer();
@@ -891,6 +890,10 @@ public abstract class Handshaker {
 		return session.getPeer();
 	}
 
+	public final Connection getConnection() {
+		return connection;
+	}
+
 	/**
 	 * Sets the message sequence number on an outbound handshake message.
 	 * 
@@ -971,7 +974,7 @@ public abstract class Handshaker {
 	public void sendFlight(DTLSFlight flight) {
 		setPendingFlight(null);
 		try {
-			recordLayer.sendFlight(flight);
+			recordLayer.sendFlight(flight, connection);
 			setPendingFlight(flight);
 		} catch(IOException e) {
 			handshakeFailed(new Exception("handshake flight " + flight.getFlightNumber() + " failed!", e));

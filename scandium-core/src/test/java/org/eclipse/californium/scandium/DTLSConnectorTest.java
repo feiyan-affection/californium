@@ -172,7 +172,7 @@ public class DTLSConnectorTest {
 
 		serverRawDataProcessor = new MessageCapturingProcessor();
 		serverSessionCache = new InMemorySessionCache();
-		serverConnectionStore = new InMemoryConnectionStore(SERVER_CONNECTION_STORE_CAPACITY, 5 * 60, serverSessionCache); // connection timeout 5mins
+		serverConnectionStore = new InMemoryConnectionStore(null, SERVER_CONNECTION_STORE_CAPACITY, 5 * 60, serverSessionCache); // connection timeout 5mins
 		serverRawDataChannel = new SimpleRawDataChannel(serverRawDataProcessor);
 
 		InMemoryPskStore pskStore = new InMemoryPskStore() {

@@ -35,9 +35,10 @@
 package org.eclipse.californium.scandium.dtls;
 
 import java.net.InetSocketAddress;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import org.eclipse.californium.elements.util.LeastRecentlyUsedCache;
 import org.eclipse.californium.elements.util.SerialExecutor;
@@ -80,12 +81,15 @@ import org.slf4j.LoggerFactory;
 public final class InMemoryConnectionStore implements ResumptionSupportingConnectionStore {
 
 	private static final Logger LOG = LoggerFactory.getLogger(InMemoryConnectionStore.class.getName());
+	private static final int DEFAULT_CID_LENGTH = 6;
 	private static final int DEFAULT_CACHE_SIZE = 150000;
 	private static final long DEFAULT_EXPIRATION_THRESHOLD = 36 * 60 * 60; // 36h
-	private final LeastRecentlyUsedCache<InetSocketAddress, Connection> connections;
-	private final Map<SessionId, Connection> connectionsByEstablishedSession;
-	private final Map<ConnectionId, Connection> connectionsByCid;
+	private final LeastRecentlyUsedCache<ConnectionId, Connection> connections;
+	private final ConcurrentMap<InetSocketAddress, Connection> connectionsByAddress;
+	private final ConcurrentMap<SessionId, Connection> connectionsByEstablishedSession;
 	private final SessionCache sessionCache;
+	private final Random random = new Random(System.currentTimeMillis());
+	private final int cidLength;
 
 	private String tag = "";
 
@@ -94,7 +98,7 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 	 * expiration threshold of 36 hours.
 	 */
 	public InMemoryConnectionStore() {
-		this(DEFAULT_CACHE_SIZE, DEFAULT_EXPIRATION_THRESHOLD);
+		this(DEFAULT_CID_LENGTH, DEFAULT_CACHE_SIZE, DEFAULT_EXPIRATION_THRESHOLD, null);
 	}
 
 	/**
@@ -105,7 +109,7 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 	 *            connection state of established DTLS sessions.
 	 */
 	public InMemoryConnectionStore(final SessionCache sessionCache) {
-		this(DEFAULT_CACHE_SIZE, DEFAULT_EXPIRATION_THRESHOLD, sessionCache);
+		this(DEFAULT_CID_LENGTH, DEFAULT_CACHE_SIZE, DEFAULT_EXPIRATION_THRESHOLD, sessionCache);
 	}
 
 	/**
@@ -117,7 +121,7 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 	 *            the store if a new connection is to be added to the store
 	 */
 	public InMemoryConnectionStore(final int capacity, final long threshold) {
-		this(capacity, threshold, null);
+		this(DEFAULT_CID_LENGTH, capacity, threshold, null);
 	}
 
 	/**
@@ -132,23 +136,45 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 	 *            {@link ClientSessionCache}, restore connection from the cache
 	 *            and mark them to resume.
 	 */
-	public InMemoryConnectionStore(final int capacity, final long threshold, final SessionCache sessionCache) {
-		connections = new LeastRecentlyUsedCache<>(capacity, threshold);
-		connections.setEvictingOnReadAccess(false);
-		connections.setUpdatingOnReadAccess(false);
-		connectionsByEstablishedSession = new HashMap<>();
-		connectionsByCid = new HashMap<>();
+	public InMemoryConnectionStore(final Integer cidLength, final int capacity, final long threshold, final SessionCache sessionCache) {
+		this.connections = new LeastRecentlyUsedCache<>(capacity, threshold);
+		this.connections.setEvictingOnReadAccess(false);
+		this.connections.setUpdatingOnReadAccess(false);
+		this.connectionsByEstablishedSession = new ConcurrentHashMap<>();
+		this.connectionsByAddress = new ConcurrentHashMap<>();
 		this.sessionCache = sessionCache;
-
+		if (cidLength == null || cidLength == 0) {
+			this.cidLength = DEFAULT_CID_LENGTH;
+		} else {
+			this.cidLength = cidLength;
+		}
 		if (sessionCache != null) {
 			// make sure that session state for stale (evicted) connections is
 			// removed from second level cache
 			connections.addEvictionListener(new LeastRecentlyUsedCache.EvictionListener<Connection>() {
 
 				@Override
-				public void onEviction(Connection staleConnection) {
-					removeFromEstablishedSessions(staleConnection);
-					removeSessionFromCache(staleConnection);
+				public void onEviction(final Connection staleConnection) {
+					Runnable remove = new Runnable() {
+
+						@Override
+						public void run() {
+							Handshaker handshaker = staleConnection.getOngoingHandshake();
+							if (handshaker != null) {
+								handshaker.handshakeFailed(new RuntimeException("Evicted!"));
+							}
+							synchronized (InMemoryConnectionStore.this) {
+								removeFromAddressConnections(staleConnection);
+								removeFromEstablishedSessions(staleConnection);
+								removeSessionFromCache(staleConnection);
+							}
+						}
+					};
+					if (staleConnection.isExecuting()) {
+						staleConnection.getExecutor().execute(remove);
+					} else {
+						remove.run();
+					}
 				}
 			});
 
@@ -158,12 +184,20 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 				for (InetSocketAddress peer : clientCache) {
 					SessionTicket ticket = clientCache.getSessionTicket(peer);
 					SessionId id = clientCache.getSessionIdentity(peer);
+					byte[] cidBytes = new byte[6];
+					ConnectionId cid = new ConnectionId(cidBytes);
 					if (ticket != null && id != null) {
 						// restore connection from session ticket
 						Connection connection = new Connection(ticket, id);
 						connection.setResumptionRequired(true);
-						connections.put(peer, connection);
-						LOG.debug("resume {} {}", peer, id);
+						ConnectionId connectionId = newConnectionId();
+						if (connectionId != null) {
+							connection.setConnectionId(connectionId);
+							connections.put(cid, connection);
+							connectionsByAddress.put(peer, connection);
+							LOG.debug("resume {} {}", peer, id);
+							break;
+						}
 					}
 				}
 			}
@@ -177,12 +211,25 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 	 * 
 	 * @param tag tag for logging
 	 */
-	public synchronized void setTag(final String tag) {
+	public synchronized InMemoryConnectionStore setTag(final String tag) {
 		if (tag.endsWith(" ")) {
 			this.tag = tag;
 		} else {
 			this.tag = tag + " ";
 		}
+		return this;
+	}
+
+	private ConnectionId newConnectionId() {
+		byte[] cidBytes = new byte[cidLength];
+		for (int i = 0; i < 10; ++i) {
+			random.nextBytes(cidBytes);
+			ConnectionId cid = new ConnectionId(cidBytes);
+			if (connections.get(cid) == null) {
+				return cid;
+			}
+		}
+		return null;
 	}
 
 	/**
@@ -213,8 +260,21 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 			if (!connection.isExecuting()) {
 				throw new IllegalStateException("Connection is not executing!");
 			}
-			if (connections.put(connection.getPeerAddress(), connection)) {
-				LOG.debug("{}connection: add {}", tag, connection.getPeerAddress());
+			ConnectionId connectionId = connection.getConnectionId();
+			if (connectionId == null) {
+				connectionId = newConnectionId();
+				if (connectionId == null) {
+					throw new IllegalStateException("Connection ids exhausted!");
+				}
+				connection.setConnectionId(connectionId);
+			} else if (connectionId.isEmpty()) {
+				throw new IllegalStateException("Connection must have a none empty connection id!");
+			} else if (connections.get(connectionId) != null) {
+				throw new IllegalStateException("Connection id already used! " + connectionId);
+			}
+			if (connections.put(connectionId, connection)) {
+				LOG.debug("{}connection: add {}", tag, connectionId);
+				addToAddressConnections(connection);
 				return true;
 			} else {
 				LOG.debug("{}connection store is full! {} max. entries.", tag, connections.getCapacity());
@@ -227,31 +287,30 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 	}
 
 	@Override
-	public synchronized boolean update(final Connection connection) {
-		if (connection != null && connections.update(connection.getPeerAddress())) {
+	public synchronized boolean update(final Connection connection, InetSocketAddress newPeerAddress) {
+		if (connection != null && connections.update(connection.getConnectionId())) {
+			InetSocketAddress peerAddress = connection.getPeerAddress();
+			if (peerAddress != newPeerAddress && (peerAddress == null || !peerAddress.equals(newPeerAddress))) {
+				LOG.debug("{}connection: {} updated, address changed from {} to {}!", tag, connection.getConnectionId(),
+						peerAddress, newPeerAddress);
+				if (peerAddress != null) {
+					connectionsByAddress.remove(peerAddress, connection);
+				}
+				connection.setPeerAddress(newPeerAddress);
+				if (newPeerAddress != null) {
+					addToAddressConnections(connection);
+				}
+			} else {
+				LOG.debug("{}connection: {} - {} updated!", tag, connection.getConnectionId(), newPeerAddress);
+			}
 			return true;
 		} else {
+			if (connection != null) {
+				LOG.debug("{}connection: {} - {} update failed!", tag, connection.getConnectionId(), newPeerAddress);
+			}
 			return false;
 		}
 	}
-
-	@Override
-	public synchronized boolean put(final ConnectionId cid, final Connection connection) {
-		if (!connectionsByCid.containsKey(cid)) {
-			connectionsByCid.put(cid, connection);
-			return true;
-		} else {
-			return false;
-		}
-	}
-
-	@Override
-	public synchronized void remove(final ConnectionId cid, final Connection connection) {
-		Connection removed = connectionsByCid.remove(cid);
-		if (removed != null && removed != connection) {
-			connectionsByCid.put(cid, removed);
-		}
-	}	
 
 	@Override
 	public synchronized void putEstablishedSession(final DTLSSession session, final Connection connection) {
@@ -310,7 +369,7 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 	private synchronized Connection findLocally(final SessionId id) {
 		Connection connection = connectionsByEstablishedSession.get(id);
 		if (connection != null) {
-			connections.update(connection.getPeerAddress());
+			connections.update(connection.getConnectionId());
 		}
 		return connection;
 	}
@@ -330,33 +389,18 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 
 	@Override
 	public synchronized Connection get(final InetSocketAddress peerAddress) {
-		return connections.get(peerAddress);
+		Connection connection = connectionsByAddress.get(peerAddress);
+		if (connection == null) {
+			dump();
+		}
+		return connection;
 	}
 
 	@Override
 	public synchronized Connection get(final ConnectionId cid) {
-		return connectionsByCid.get(cid);
-	}
-
-	@Override
-	public Connection remove(final InetSocketAddress peerAddress) {
-		return remove(peerAddress, true);
-	}
-
-	@Override
-	public synchronized Connection remove(final InetSocketAddress peerAddress, final boolean removeFromSessionCache) {
-		Connection connection = connections.remove(peerAddress);
-		if (connection != null) {
-			if (LOG.isTraceEnabled()) {
-				LOG.trace("{}connection: remove {}:{}", tag, connection, peerAddress,
-						new Throwable("connection removed!"));
-			} else {
-				LOG.debug("{}connection: remove {}", tag, peerAddress);
-			}
-			removeFromEstablishedSessions(connection);
-			if (removeFromSessionCache) {
-				removeSessionFromCache(connection);
-			}
+		Connection connection = connections.get(cid);
+		if (connection == null) {
+			dump();
 		}
 		return connection;
 	}
@@ -368,7 +412,7 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 
 	@Override
 	public synchronized boolean remove(final Connection connection, final boolean removeFromSessionCache) {
-		boolean removed = connections.remove(connection.getPeerAddress(), connection) == connection;
+		boolean removed = connections.remove(connection.getConnectionId(), connection) == connection;
 		if (removed) {
 			if (LOG.isTraceEnabled()) {
 				LOG.trace("{}connection: remove {}:{}", tag, connection, connection.getPeerAddress(),
@@ -377,7 +421,7 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 				LOG.debug("{}connection: remove {}", tag, connection.getPeerAddress());
 			}
 			removeFromEstablishedSessions(connection);
-			removeFromCidConnections(connection);
+			removeFromAddressConnections(connection);
 			if (removeFromSessionCache) {
 				removeSessionFromCache(connection);
 			}
@@ -396,11 +440,24 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 		}
 	}
 
-	private void removeFromCidConnections(Connection connection) {
-		DTLSSession session = connection.getSession();
-		if (session != null) {
-			ConnectionId connectionId = session.getReadConnectionId();
-			remove(connectionId, connection);
+	private void addToAddressConnections(Connection connection) {
+		InetSocketAddress peerAddress = connection.getPeerAddress();
+		if (peerAddress != null) {
+			Connection previous = connectionsByAddress.put(peerAddress, connection);
+			if (previous != null) {
+				LOG.debug("{}connection: {} - {} added, {} removed!", tag, connection.getConnectionId(), peerAddress,
+						previous.getConnectionId());
+				previous.setPeerAddress(null);
+			} else {
+				LOG.debug("{}connection: {} - {} added!", tag, connection.getConnectionId(), peerAddress);
+			}
+		}
+	}
+
+	private void removeFromAddressConnections(Connection connection) {
+		InetSocketAddress peerAddress = connection.getPeerAddress();
+		if (peerAddress != null) {
+			connectionsByAddress.remove(peerAddress, connection);
 		}
 	}
 
@@ -420,7 +477,7 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 		}
 		connections.clear();
 		connectionsByEstablishedSession.clear();
-		connectionsByCid.clear();
+		connectionsByAddress.clear();
 		// TODO: does it make sense to clear the SessionCache as well?
 	}
 
@@ -442,7 +499,7 @@ public final class InMemoryConnectionStore implements ResumptionSupportingConnec
 			LOG.debug("  {}connections empty!", tag);
 		} else {
 			for (Connection connection : connections.values()) {
-				LOG.debug("  {}connection: {}", tag, connection.getPeerAddress());
+				LOG.debug("  {}connection: {} - {}", tag, connection.getPeerAddress(), connection.getConnectionId());
 			}
 		}
 	}

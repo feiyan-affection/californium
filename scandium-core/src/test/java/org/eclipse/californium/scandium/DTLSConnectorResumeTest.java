@@ -353,7 +353,7 @@ public class DTLSConnectorResumeTest {
 
 		// remove connection from server's connection store and add ticket to session cache
 		// to mimic a fail over from another node
-		serverHelper.serverConnectionStore.remove(clientAddress);
+		serverHelper.remove(clientAddress, true);
 		assertThat(serverHelper.serverSessionCache.get(establishedSessionId), is(nullValue()));
 		serverHelper.serverSessionCache.put(establishedSessionId, serverHelper.establishedServerSession.getSessionTicket());
 
@@ -420,8 +420,8 @@ public class DTLSConnectorResumeTest {
 		clientRawDataChannel.setLatch(latch);
 
 		// remove session from server
-		serverHelper.serverConnectionStore.remove(clientAddress);
-
+		serverHelper.remove(clientAddress, true);
+		
 		// send message
 		RawData data = RawData.outbound(msg.getBytes(), new AddressEndpointContext(serverHelper.serverEndpoint), null, false);
 		client.send(data);

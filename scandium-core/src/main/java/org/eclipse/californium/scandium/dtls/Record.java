@@ -173,6 +173,7 @@ public class Record {
 		}
 		this.fragment = fragment;
 		this.session = session;
+		this.peerAddress = session.getPeer();
 		if (cid && session != null) {
 			this.connectionId = session.getWriteConnectionId();
 		}
@@ -827,15 +828,13 @@ public class Record {
 
 	public void setSession(DTLSSession session) {
 		this.session = session;
-		if (session != null) {
-			this.peerAddress = null;
+		if (session != null && this.peerAddress == null) {
+			this.peerAddress = session.getPeer();
 		}
 	}
 
 	public InetSocketAddress getPeerAddress() {
-		if (session != null) {
-			return session.getPeer();
-		} else if (peerAddress != null) {
+		if (peerAddress != null) {
 			return peerAddress;
 		} else {
 			throw new IllegalStateException("Record does not have a peer address");

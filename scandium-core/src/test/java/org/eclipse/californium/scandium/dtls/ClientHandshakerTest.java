@@ -212,7 +212,6 @@ public class ClientHandshakerTest {
 				session,
 				recordLayer,
 				null,
-				null,
 				builder.build(),
 				MAX_TRANSMISSION_UNIT);
 	}

@@ -104,7 +104,7 @@ public class DTLSConnectorStartStopTest {
 
 	@Before
 	public void setUp() throws IOException, GeneralSecurityException {
-		clientConnectionStore = new InMemoryConnectionStore(CLIENT_CONNECTION_STORE_CAPACITY, 60, clientSessionCache);
+		clientConnectionStore = new InMemoryConnectionStore(null, CLIENT_CONNECTION_STORE_CAPACITY, 60, clientSessionCache);
 		clientConnectionStore.setTag("client");
 		InetSocketAddress clientEndpoint = new InetSocketAddress(InetAddress.getLoopbackAddress(), 0);
 		DtlsConnectorConfig.Builder builder = newStandardClientConfigBuilder(clientEndpoint)

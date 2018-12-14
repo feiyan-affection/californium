@@ -91,9 +91,9 @@ public class ResumingClientHandshaker extends ClientHandshaker {
 	 * @throws NullPointerException
 	 *            if session, recordLayer or config is <code>null</code>
 	 */
-	public ResumingClientHandshaker(DTLSSession session, RecordLayer recordLayer, SessionListener sessionListener,
-			ConnectionIdProvider cidProvider, DtlsConnectorConfig config, int maxTransmissionUnit) {
-		super(session, recordLayer, sessionListener, cidProvider, config, maxTransmissionUnit);
+	public ResumingClientHandshaker(DTLSSession session, RecordLayer recordLayer, Connection connection,
+			DtlsConnectorConfig config, int maxTransmissionUnit) {
+		super(session, recordLayer, connection, config, maxTransmissionUnit);
 		if (session.getSessionIdentifier() == null) {
 			throw new IllegalArgumentException("Session must contain the ID of the session to resume");
 		}
@@ -184,13 +184,6 @@ public class ResumingClientHandshaker extends ClientHandshaker {
 							ConnectionId connectionId = extension.getConnectionId();
 							if (connectionId.length() > 0) {
 								session.setWriteConnectionId(connectionId);
-							}
-						} else {
-							// connection id not supported by server
-							ConnectionId connectionId = session.getReadConnectionId();
-							if (connectionId != null) {
-								cidProvider.release(connectionId);
-								session.setReadConnectionId(null);
 							}
 						}
 					}

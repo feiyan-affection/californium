@@ -178,9 +178,9 @@ public class ServerHandshaker extends Handshaker {
 	 * @throws NullPointerException
 	 *            if session, recordLayer or config is <code>null</code>.
 	 */
-	public ServerHandshaker(int initialMessageSequenceNo, DTLSSession session, RecordLayer recordLayer, SessionListener sessionListener,
-			ConnectionIdProvider cidProvider, DtlsConnectorConfig config, int maxTransmissionUnit) { 
-		super(false, initialMessageSequenceNo, session, recordLayer, sessionListener, cidProvider, config, maxTransmissionUnit);
+	public ServerHandshaker(int initialMessageSequenceNo, DTLSSession session, RecordLayer recordLayer,
+			Connection connection, DtlsConnectorConfig config, int maxTransmissionUnit) {
+		super(false, initialMessageSequenceNo, session, recordLayer, connection, config, maxTransmissionUnit);
 
 		this.supportedCipherSuites = config.getSupportedCipherSuites();
 
@@ -718,8 +718,7 @@ public class ServerHandshaker extends Handshaker {
 				}
 				ConnectionIdExtension extension;
 				if (connectionIdLength > 0) {
-					ConnectionId cid = cidProvider.create(connectionIdLength);
-					session.setReadConnectionId(cid);
+					ConnectionId cid = connection.getConnectionId();
 					extension = ConnectionIdExtension.fromConnectionId(cid);
 				} else {
 					extension = ConnectionIdExtension.fromLength(connectionIdLength);
